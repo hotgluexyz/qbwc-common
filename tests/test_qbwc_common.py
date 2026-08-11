@@ -176,7 +176,7 @@ class TestEncodeValidationMessages:
             "qbXML validation error: missing required field 'Name' (got 'CompanyName' at that position)",
             "CustomerAdd",
         ),
-        "invalid_type_Balance": (
+        "unknown_field_Balance": (
             {
                 "CustomerAddRq": {
                     "@requestID": "0",
@@ -239,11 +239,12 @@ class TestEncodeValidationMessages:
     }
 
     @pytest.mark.parametrize(
-        ("label", "request_data", "expected_message", "expected_field"),
-        [(label, *values) for label, values in ENCODE_VALIDATION_CASES.items()],
+        ("request_data", "expected_message", "expected_field"),
+        list(ENCODE_VALIDATION_CASES.values()),
+        ids=list(ENCODE_VALIDATION_CASES.keys()),
     )
     def test_encode_validation_message(
-        self, label, request_data, expected_message, expected_field
+        self, request_data, expected_message, expected_field
     ):
         """Known XSD failures return stable user-facing encode error messages."""
         with pytest.raises(QBXMLEncodeError) as exc_info:
@@ -274,7 +275,13 @@ class TestDecodeResponses:
 
         parsed = [parse_rs_element(record) for record in records]
         assert all(item["status_code"] == 0 for item in parsed)
-        assert parsed[0]["request_id"] == "ext-ok-1"
+        assert [item["request_id"] for item in parsed] == [
+            "ext-ok-1",
+            "ext-ok-2",
+            "ext-ok-3",
+            "ext-ok-4",
+            "ext-ok-5",
+        ]
         assert parsed[0]["entity"]["ListID"] == "80002747-1785964187"
 
     def test_decode_mixed_batch_response(self):
@@ -288,13 +295,22 @@ class TestDecodeResponses:
         assert len(records) == 5
 
         parsed = [parse_rs_element(record) for record in records]
+        assert [item["request_id"] for item in parsed] == [
+            "ext-mix-1",
+            "ext-mix-2",
+            "ext-mix-3",
+            "ext-mix-4",
+            "ext-mix-5",
+        ]
         assert parsed[0]["status_code"] == 0
         assert parsed[0]["entity"]["ListID"] == "8000274C-1785964190"
         assert parsed[1]["status_code"] == 3100
         assert parsed[1]["entity"] is None
         assert parsed[2]["status_code"] == 3250
+        assert parsed[3]["status_code"] == 3130
+        assert parsed[3]["entity"] is None
         assert parsed[4]["status_code"] == 0
-        assert parsed[4]["request_id"] == "ext-mix-5"
+        assert parsed[4]["entity"]["ListID"] == "8000274D-1785964190"
 
     def test_decode_single_account_response_strict_default(self):
         """Strict default decode parses a single AccountAddRs fixture."""
@@ -306,6 +322,73 @@ class TestDecodeResponses:
         assert parsed["status_code"] == 0
         assert parsed["entity"]["ListID"] == "80000035-1785958998"
         assert parsed["entity_key"] == "AccountRet"
+
+
+class TestNormalizeRsList:
+    """normalize_rs_list handles missing, single, and repeated *Rs elements."""
+
+    def test_missing_element_returns_empty_list(self):
+        """Absent *Rs key is an empty list, not None."""
+        assert normalize_rs_list({}, "CustomerAddRs") == []
+
+    def test_single_dict_is_wrapped(self):
+        """xmlschema returns a dict when there is one *Rs element."""
+        assert normalize_rs_list({"CustomerAddRs": {"@statusCode": 0}}, "CustomerAddRs") == [
+            {"@statusCode": 0}
+        ]
+
+    def test_list_is_returned_unchanged(self):
+        """Repeated *Rs elements stay a list."""
+        items = [{"@statusCode": 0}, {"@statusCode": 1}]
+        assert normalize_rs_list({"CustomerAddRs": items}, "CustomerAddRs") == items
+
+
+class TestParseRsElement:
+    """parse_rs_element extracts status fields and optional *Ret payload."""
+
+    def test_error_rs_has_no_entity(self):
+        """A failed *Rs without *Ret leaves entity and entity_key unset."""
+        parsed = parse_rs_element(
+            {
+                "@requestID": "1",
+                "@statusCode": 3100,
+                "@statusSeverity": "Error",
+                "@statusMessage": "already in use",
+            }
+        )
+        assert parsed["request_id"] == "1"
+        assert parsed["status_code"] == 3100
+        assert parsed["status_message"] == "already in use"
+        assert parsed["entity_key"] is None
+        assert parsed["entity"] is None
+
+
+def _stub_completed_poll(mock_post, mock_get, response_fixture: str) -> None:
+    """Queue a successful enqueue and a completed poll with the given fixture."""
+    mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
+    mock_get.return_value = _mock_response(
+        200,
+        {
+            "status": "completed",
+            "response_payload": _read_fixture(response_fixture),
+        },
+    )
+
+
+def _customer_add_batch(count: int) -> list[dict]:
+    """Build count CustomerAddRq dicts with ext-ok-N request IDs."""
+    return [
+        {
+            "CustomerAddRq": {
+                "@requestID": f"ext-ok-{index}",
+                "CustomerAdd": {
+                    "Name": f"HG-BATCH-{index}",
+                    "CompanyName": f"Co {index}",
+                },
+            }
+        }
+        for index in range(1, count + 1)
+    ]
 
 
 class TestQBWCClientPoll:
@@ -320,17 +403,23 @@ class TestQBWCClientPoll:
         """make_request encodes, enqueues, polls and decodes in one call."""
         client = self._make_client()
         client.session_id = "sess-1"
+        _stub_completed_poll(mock_post, mock_get, "account-add.response.xml")
 
-        mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
-        mock_get.return_value = _mock_response(
-            200,
+        response = client.make_request(
             {
-                "status": "completed",
-                "response_payload": _read_fixture("account-add.response.xml"),
-            },
+                "AccountAddRq": {
+                    "AccountAdd": {
+                        "Name": "HG-WRITE-TEST-0805",
+                        "AccountType": "Income",
+                        "Desc": "Created by target-qbwc write probe",
+                    }
+                }
+            }
         )
-
-        response = client.make_request({"HostQueryRq": {}})
+        enqueue_payload = mock_post.call_args.kwargs["json"]["request_payload"]
+        assert "AccountAddRq" in enqueue_payload
+        assert "stopOnError" in enqueue_payload
+        assert mock_post.call_args.kwargs["params"]["session_id"] == "sess-1"
         records = normalize_rs_list(response, "AccountAddRs")
         assert len(records) == 1
         assert parse_rs_element(records[0])["entity"]["Name"] == "HG-WRITE-TEST-0805"
@@ -341,21 +430,25 @@ class TestQBWCClientPoll:
         """Client decode_validation=skip decodes partial write batch responses."""
         client = self._make_client()
         client.session_id = "sess-1"
+        _stub_completed_poll(mock_post, mock_get, "customer-batch-valid.response.xml")
 
-        mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
-        mock_get.return_value = _mock_response(
-            200,
-            {
-                "status": "completed",
-                "response_payload": _read_fixture("customer-batch-valid.response.xml"),
-            },
+        batch_request_xml = encode_requests(
+            _customer_add_batch(5),
+            SCHEMA,
+            on_error="continueOnError",
         )
-
-        response = client.send_qbxml(
-            _read_fixture("account-add.request.xml"),
-            decode_validation="skip",
-        )
-        assert len(normalize_rs_list(response, "CustomerAddRs")) == 5
+        response = client.send_qbxml(batch_request_xml, decode_validation="skip")
+        enqueue_payload = mock_post.call_args.kwargs["json"]["request_payload"]
+        assert enqueue_payload == batch_request_xml
+        assert "continueOnError" in enqueue_payload
+        assert all(f"ext-ok-{index}" in enqueue_payload for index in range(1, 6))
+        parsed = [
+            parse_rs_element(record)
+            for record in normalize_rs_list(response, "CustomerAddRs")
+        ]
+        assert [item["request_id"] for item in parsed] == [
+            f"ext-ok-{index}" for index in range(1, 6)
+        ]
 
     @patch("qbwc_common.client.requests.post")
     def test_enqueue_includes_completed_percentage(self, mock_post):
@@ -371,6 +464,22 @@ class TestQBWCClientPoll:
 
         payload = mock_post.call_args.kwargs["json"]
         assert payload["completed_percentage"] == 50
+        assert payload["request_payload"] == _read_fixture("account-add.request.xml")
+
+    @patch("qbwc_common.client.requests.post")
+    def test_enqueue_omits_completed_percentage_when_counters_are_zero(self, mock_post):
+        """completed_percentage is omitted until both progress counters are set."""
+        client = self._make_client()
+        client.session_id = "sess-1"
+        mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
+
+        with patch.object(
+            client, "_poll_request", return_value=_read_fixture("account-add.response.xml")
+        ):
+            client.send_qbxml(_read_fixture("account-add.request.xml"))
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "completed_percentage" not in payload
 
     @patch("qbwc_common.client.requests.get")
     @patch("qbwc_common.client.requests.post")
@@ -378,17 +487,11 @@ class TestQBWCClientPoll:
         """Completed poll returns decoded QBXMLMsgsRs body."""
         client = self._make_client()
         client.session_id = "sess-1"
+        request_xml = _read_fixture("account-add.request.xml")
+        _stub_completed_poll(mock_post, mock_get, "account-add.response.xml")
 
-        mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
-        mock_get.return_value = _mock_response(
-            200,
-            {
-                "status": "completed",
-                "response_payload": _read_fixture("account-add.response.xml"),
-            },
-        )
-
-        response = client.send_qbxml(_read_fixture("account-add.request.xml"))
+        response = client.send_qbxml(request_xml)
+        assert mock_post.call_args.kwargs["json"]["request_payload"] == request_xml
         records = normalize_rs_list(response, "AccountAddRs")
         assert len(records) == 1
         assert parse_rs_element(records[0])["entity"]["Name"] == "HG-WRITE-TEST-0805"
@@ -430,8 +533,10 @@ class TestQBWCClientPoll:
             {"status": "error", "error_code": "E1", "error_message": "boom"},
         )
 
-        with pytest.raises(QBWCRequestError, match="boom"):
+        with pytest.raises(QBWCRequestError, match="req-1") as exc_info:
             client.send_qbxml("<QBXML></QBXML>")
+        assert "boom" in str(exc_info.value)
+        assert "Request XML" not in str(exc_info.value)
 
     @patch("qbwc_common.client.requests.get")
     @patch("qbwc_common.client.requests.post")
@@ -443,8 +548,10 @@ class TestQBWCClientPoll:
         mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
         mock_get.return_value = _mock_response(200, {"status": "timeout"})
 
-        with pytest.raises(QBWCRequestTimeoutError):
+        with pytest.raises(QBWCRequestTimeoutError, match="req-1") as exc_info:
             client.send_qbxml("<QBXML></QBXML>", request_timeout=10)
+        assert "10 seconds" in str(exc_info.value)
+        assert "Request XML" not in str(exc_info.value)
 
     @patch("qbwc_common.client.requests.get")
     @patch("qbwc_common.client.requests.post")
@@ -456,8 +563,10 @@ class TestQBWCClientPoll:
         mock_post.return_value = _mock_response(200, {"request_id": "req-1"})
         mock_get.return_value = _mock_response(200, {"status": "weird"})
 
-        with pytest.raises(QBWCUnknownPollStatusError, match="weird"):
+        with pytest.raises(QBWCUnknownPollStatusError, match="weird") as exc_info:
             client.send_qbxml("<QBXML></QBXML>")
+        assert "req-1" in str(exc_info.value)
+        assert "Request XML" not in str(exc_info.value)
 
     def test_send_without_session_raises(self):
         """Enqueue without create_session raises QBWCNotAuthenticatedError."""
@@ -473,6 +582,16 @@ class TestQBWCClientPoll:
         mock_post.return_value = _mock_response(500, text="server error")
 
         with pytest.raises(QBWCEnqueueError, match="500"):
+            client.send_qbxml("<QBXML></QBXML>")
+
+    @patch("qbwc_common.client.requests.post")
+    def test_enqueue_missing_request_id_raises(self, mock_post):
+        """HTTP 200 enqueue body without request_id raises QBWCEnqueueError."""
+        client = self._make_client()
+        client.session_id = "sess-1"
+        mock_post.return_value = _mock_response(200, {})
+
+        with pytest.raises(QBWCEnqueueError, match="request_id"):
             client.send_qbxml("<QBXML></QBXML>")
 
     @patch("qbwc_common.client.requests.post")
@@ -503,6 +622,42 @@ class TestQBWCClientPoll:
 
         with pytest.raises(QBXMLStatusError, match="QB unavailable"):
             client.check_qbwc_is_alive()
+
+    @patch.object(QBWCClient, "make_request")
+    def test_check_qbwc_is_alive_accepts_single_dict_rs(self, mock_make_request):
+        """A single HostQueryRs dict (not a list) is treated as success when status is 0."""
+        client = self._make_client()
+        mock_make_request.return_value = {"HostQueryRs": {"@statusCode": 0}}
+
+        client.check_qbwc_is_alive()
+
+        mock_make_request.assert_called_once_with(
+            {"HostQueryRq": {}}, client.qbwc_is_alive_timeout
+        )
+
+    @patch("qbwc_common.client.requests.post")
+    def test_authenticate_stores_session_id(self, mock_post):
+        """Successful authenticate stores the session id from the response body."""
+        client = self._make_client()
+        mock_post.return_value = _mock_response(
+            200, {"session_id": "89ed16b4-44d8-4c37-ba4a-2ceb15ca304b"}
+        )
+
+        client.create_session()
+
+        assert client.session_id == "89ed16b4-44d8-4c37-ba4a-2ceb15ca304b"
+        auth_call = mock_post.call_args
+        assert auth_call.args[0].endswith("/authenticate")
+        assert auth_call.kwargs["headers"]["Authorization"] == "Bearer test-token"
+
+    @patch("qbwc_common.client.requests.post")
+    def test_authenticate_missing_session_id_raises(self, mock_post):
+        """HTTP 200 authenticate body without session_id raises QBWCAuthenticationError."""
+        client = self._make_client()
+        mock_post.return_value = _mock_response(200, {})
+
+        with pytest.raises(QBWCAuthenticationError, match="session_id"):
+            client.create_session()
 
     @patch("qbwc_common.client.requests.post")
     def test_authenticate_failure_raises(self, mock_post):

@@ -108,7 +108,7 @@ from qbwc_common import filter_dict_for_mod, get_mod_element_names
 
 allowed = get_mod_element_names(schemas, "CustomerMod")
 incoming = filter_dict_for_mod(payload, allowed)
-merged = {**existing_ret, **incoming}
+merged = {**filter_dict_for_mod(existing_ret, allowed), **incoming}
 merged["ListID"] = existing_ret["ListID"]
 merged["EditSequence"] = existing_ret["EditSequence"]
 ```

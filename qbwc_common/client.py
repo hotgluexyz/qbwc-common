@@ -75,8 +75,14 @@ class QBWCClient:
                 f"Failed to authenticate: {response.status_code} - {response.text}"
             )
 
-        self.session_id = response.json()["session_id"]
-        self._log_info(f"Created session id: {self.session_id}")
+        try:
+            body = response.json()
+            self.session_id = body["session_id"]
+        except (ValueError, KeyError) as exc:
+            raise QBWCAuthenticationError(
+                "Authenticate response is not valid JSON or is missing session_id"
+            ) from exc
+        self._log_info(f"Created session id ending in {self.session_id[-4:]}")
 
     def check_qbwc_is_alive(self) -> None:
         """Run HostQueryRq to verify QuickBooks is reachable through QBWC."""
@@ -125,7 +131,13 @@ class QBWCClient:
                 f"Failed to make request: {response.status_code} - {response.text}"
             )
 
-        return response.json()["request_id"]
+        try:
+            body = response.json()
+            return body["request_id"]
+        except (ValueError, KeyError) as exc:
+            raise QBWCEnqueueError(
+                "Enqueue response is not valid JSON or is missing request_id"
+            ) from exc
 
     @backoff.on_exception(backoff.expo, RequestException, max_time=60)
     def _make_poll_request(self, request_id: str) -> dict[str, Any]:
@@ -138,7 +150,7 @@ class QBWCClient:
         response.raise_for_status()
         return response.json()
 
-    def _poll_request(self, request_id: str, request_xml: str, request_timeout: int) -> str:
+    def _poll_request(self, request_id: str, request_timeout: int) -> str:
         """Long poll until the QBWC request completes or fails."""
         while True:
             self._log_info(f"Polling request {request_id} for the result")
@@ -150,13 +162,12 @@ class QBWCClient:
                 return data["response_payload"]
             if status == "error":
                 raise QBWCRequestError(
-                    f"Request failed: {data.get('error_code')} - "
-                    f"{data.get('error_message')} - Request XML: {request_xml}"
+                    f"Request {request_id} failed: {data.get('error_code')} - "
+                    f"{data.get('error_message')}"
                 )
             if status == "timeout":
                 raise QBWCRequestTimeoutError(
-                    f"Request timed out after {request_timeout} seconds - "
-                    f"Request XML: {request_xml}"
+                    f"Request {request_id} timed out after {request_timeout} seconds"
                 )
             if status in POLL_STATUSES_RETRY:
                 self._log_info(f"Request {request_id} is '{status}'. Retrying in 1 second...")
@@ -165,7 +176,7 @@ class QBWCClient:
 
             raise QBWCUnknownPollStatusError(
                 f"Unknown response status: {status} - Response: {data} - "
-                f"Request XML: {request_xml}"
+                f"Request id: {request_id}"
             )
 
     def _require_session(self) -> None:
@@ -183,7 +194,7 @@ class QBWCClient:
         self._require_session()
         timeout = request_timeout or self.request_timeout
         request_id = self._enqueue_request(request_xml, timeout)
-        response_xml = self._poll_request(request_id, request_xml, timeout)
+        response_xml = self._poll_request(request_id, timeout)
         return decode_response(response_xml, self.qbd_xml_schemas, validation=decode_validation)
 
     def make_request(

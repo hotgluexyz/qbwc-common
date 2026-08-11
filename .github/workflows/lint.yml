@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '**.py'
+      - 'tests/fixtures/**'
+      - 'qbwc_common/qbd_xml_schemas/**'
       - 'ruff.toml'
       - 'tox.ini'
       - 'pyproject.toml'
@@ -11,10 +13,14 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v3
