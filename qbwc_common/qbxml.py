@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,11 @@ from qbwc_common.exceptions import QBXMLEncodeError, QBXMLDecodeError
 from qbwc_common.qbxml_encode_errors import format_encode_validation_error
 
 QBD_XML_SCHEMAS_FILE = Path(__file__).parent / "qbd_xml_schemas" / "qbxmlops130.xsd"
-QBXML_HEADER = '<?xml version="1.0" encoding="utf-8"?><?qbxml version="13.0"?>\n'
+QBXML_VERSION = "13.0"
+QBXML_HEADER = (
+    f'<?xml version="1.0" encoding="utf-8"?><?qbxml version="{QBXML_VERSION}"?>\n'
+)
+logger = logging.getLogger(__name__)
 
 ON_ERROR_STOP = "stopOnError"
 ON_ERROR_CONTINUE = "continueOnError"
@@ -29,6 +34,7 @@ def load_qbd_xml_schemas() -> xmlschema.XMLSchema:
     Parsed schemas are cached for the process lifetime because the XSD bundle is
     immutable and expensive to load.
     """
+    logger.info("Loading QBD XML schemas (qbXML %s)", QBXML_VERSION)
     schema = xmlschema.XMLSchema(QBD_XML_SCHEMAS_FILE)
     if schema.validity != "valid":
         raise ValueError(f"QBD XML schemas are not valid: {schema.validity}")
