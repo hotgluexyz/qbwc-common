@@ -1,0 +1,83 @@
+"""Shared QBWC transport and QBXML helpers for tap-qbwc and target-qbwc."""
+
+from qbwc_common.client import QBWCClient
+from qbwc_common.config import (
+    DEFAULT_IS_SANDBOX,
+    DEFAULT_QBWC_IS_ALIVE_TIMEOUT,
+    DEFAULT_REQUEST_TIMEOUT,
+    OPTIONAL_CONFIG_KEYS,
+    PRODUCTION_BASE_URL,
+    REQUIRED_CONFIG_KEYS,
+    SANDBOX_BASE_URL,
+    normalize_config,
+    resolve_base_url,
+)
+from qbwc_common.exceptions import (
+    QBWCAuthenticationError,
+    QBWCEnqueueError,
+    QBWCError,
+    QBWCNotAuthenticatedError,
+    QBWCQueueFullError,
+    QBWCRequestError,
+    QBWCRequestTimeoutError,
+    QBWCUnknownPollStatusError,
+    QBXMLDecodeError,
+    QBXMLStatusError,
+    QBXMLEncodeError,
+)
+from qbwc_common.qbxml_encode_errors import format_encode_validation_error
+from qbwc_common.mod_merge import (
+    filter_dict_for_mod,
+    get_mod_element_names,
+    get_ret_only_field_names,
+)
+from qbwc_common.qbxml import (
+    DEFAULT_DECODE_VALIDATION,
+    ON_ERROR_CONTINUE,
+    ON_ERROR_STOP,
+    QBXML_HEADER,
+    decode_response,
+    encode_requests,
+    load_qbd_xml_schemas,
+    merge_request_elements,
+    normalize_rs_list,
+    parse_rs_element,
+)
+
+__all__ = [
+    "DEFAULT_DECODE_VALIDATION",
+    "DEFAULT_IS_SANDBOX",
+    "DEFAULT_QBWC_IS_ALIVE_TIMEOUT",
+    "DEFAULT_REQUEST_TIMEOUT",
+    "ON_ERROR_CONTINUE",
+    "ON_ERROR_STOP",
+    "OPTIONAL_CONFIG_KEYS",
+    "PRODUCTION_BASE_URL",
+    "QBWCClient",
+    "QBWCAuthenticationError",
+    "QBWCEnqueueError",
+    "QBWCError",
+    "QBWCNotAuthenticatedError",
+    "QBWCQueueFullError",
+    "QBWCRequestError",
+    "QBWCRequestTimeoutError",
+    "QBWCUnknownPollStatusError",
+    "QBXMLDecodeError",
+    "QBXML_HEADER",
+    "QBXMLStatusError",
+    "QBXMLEncodeError",
+    "REQUIRED_CONFIG_KEYS",
+    "SANDBOX_BASE_URL",
+    "decode_response",
+    "encode_requests",
+    "filter_dict_for_mod",
+    "format_encode_validation_error",
+    "get_mod_element_names",
+    "get_ret_only_field_names",
+    "load_qbd_xml_schemas",
+    "merge_request_elements",
+    "normalize_config",
+    "normalize_rs_list",
+    "parse_rs_element",
+    "resolve_base_url",
+]

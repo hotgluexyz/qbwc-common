@@ -1,0 +1,26 @@
+<?xml version="1.0" ?>
+<QBXML>
+  <QBXMLMsgsRs>
+    <AccountAddRs requestID="" statusCode="0" statusSeverity="Info" statusMessage="Status OK">
+      <AccountRet>
+        <ListID>80000035-1785958998</ListID>
+        <TimeCreated>2026-08-05T15:43:18-04:00</TimeCreated>
+        <TimeModified>2026-08-05T15:43:18-04:00</TimeModified>
+        <EditSequence>1785958998</EditSequence>
+        <Name>HG-WRITE-TEST-0805</Name>
+        <FullName>HG-WRITE-TEST-0805</FullName>
+        <IsActive>true</IsActive>
+        <Sublevel>0</Sublevel>
+        <AccountType>Income</AccountType>
+        <Desc>Created by target-qbwc write probe</Desc>
+        <Balance>0.00</Balance>
+        <TotalBalance>0.00</TotalBalance>
+        <CashFlowClassification>None</CashFlowClassification>
+        <CurrencyRef>
+          <ListID>80000096-1709842673</ListID>
+          <FullName>US Dollar</FullName>
+        </CurrencyRef>
+      </AccountRet>
+    </AccountAddRs>
+  </QBXMLMsgsRs>
+</QBXML>

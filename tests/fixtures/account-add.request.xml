@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?qbxml version="13.0"?>
+<QBXML>
+  <QBXMLMsgsRq onError="stopOnError">
+    <AccountAddRq>
+      <AccountAdd>
+        <Name>HG-WRITE-TEST-0805</Name>
+        <AccountType>Income</AccountType>
+        <Desc>Created by target-qbwc write probe</Desc>
+      </AccountAdd>
+    </AccountAddRq>
+  </QBXMLMsgsRq>
+</QBXML>
