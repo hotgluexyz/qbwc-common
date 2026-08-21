@@ -1465,6 +1465,7 @@
 <xsd:element name="ContactValue" type="STRTYPE"/>
 <xsd:element name="IsRSBEnabled" type="BOOLTYPE"/>
 <xsd:element name="IsBarcodeEnabled" type="BOOLTYPE"/>
+<xsd:element name="IsInventoryExpirationDateEnabled" type="BOOLTYPE"/>
 <xsd:element name="BarCodeValue" type="STRTYPE"/>
 <xsd:element name="AssignEvenIfUsed" type="BOOLTYPE"/>
 <xsd:element name="AllowOverride" type="BOOLTYPE"/>
@@ -7297,6 +7298,7 @@
 		<xsd:sequence>
 			<xsd:element ref="EnhancedInventoryReceivingEnabled" minOccurs="0"/>
 			<xsd:element ref="IsTrackingSerialOrLotNumber" minOccurs="0"/>
+			<xsd:element ref="IsInventoryExpirationDateEnabled" minOccurs="0"/>
 			<xsd:element ref="isTrackingOnSalesTransactionsEnabled" minOccurs="0"/>
 			<xsd:element ref="isTrackingOnPurchaseTransactionsEnabled" minOccurs="0"/>
 			<xsd:element ref="isTrackingOnInventoryAdjustmentEnabled" minOccurs="0"/>
